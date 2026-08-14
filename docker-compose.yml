@@ -1,0 +1,23 @@
+# Entorno de desarrollo local. En produccion (Kali Linux) PostgreSQL se instala como paquete
+# del sistema via scripts/install/install_kali.sh, no mediante este compose (ver v0.2 "Local-first").
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: tony-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tony
+      POSTGRES_PASSWORD: tony
+      POSTGRES_DB: tony
+    ports:
+      - "5432:5432"
+    volumes:
+      - tony_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tony -d tony"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  tony_pgdata:

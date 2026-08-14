@@ -1,0 +1,40 @@
+[Unit]
+Description=TONY Core (Proyecto TONY - asistente personal local-first)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=tony
+Group=tony
+WorkingDirectory=/opt/tony
+EnvironmentFile=/opt/tony/.env
+ExecStart=/opt/tony/.venv/bin/tony
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+
+# Seguridad por diseno (v0.1 principio "Seguridad por diseno"): minimo privilegio,
+# sin acceso al resto del sistema mas alla de lo que TONY necesita.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/tony/var
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
