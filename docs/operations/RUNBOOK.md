@@ -57,6 +57,12 @@ dedicados, genera `/opt/tony/.env` con una contraseña aleatoria, aplica las mig
 instala/habilita la unidad `tony.service` (ver `systemd/units/tony.service` para el hardening
 aplicado).
 
+Es seguro volver a correrlo (reinstalación, recuperación parcial): si `/opt/tony/.env` ya
+existe, su contraseña es la fuente de verdad y el rol de PostgreSQL se sincroniza contra ella;
+si no existe, genera una nueva y la fuerza en ambos lados. En cualquier caso valida la
+conexión real antes de continuar — si algo quedó inconsistente, aborta con un mensaje claro
+en vez de dejar un `.env` que no va a autenticar.
+
 ## Solución de problemas
 
 - **`system.degraded` / salida con código 1 al arrancar**: PostgreSQL no responde. Verificar

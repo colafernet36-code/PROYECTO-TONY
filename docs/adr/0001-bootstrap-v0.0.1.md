@@ -60,6 +60,37 @@ No implementar estos pasos ahora es intencional: la propia especificación exige
 hito antes de avanzar, y construir Policy Engine o AI Router sin Audit Service ya probado
 violaría el orden que la arquitectura define.
 
+## Revisión (ChatGPT, previa al merge)
+
+En la revisión del diff completo del PR se detectaron dos brechas, corregidas antes de
+mergear:
+
+1. **Idempotencia de credenciales en `scripts/install/install_kali.sh`**: el script generaba
+   una contraseña nueva en cada corrida pero solo la aplicaba al rol de PostgreSQL si ese rol
+   no existía todavía, mientras que la escritura de `.env` dependía de una condición
+   independiente (si el archivo ya existía o no). Una reinstalación o recuperación parcial en
+   la que `.env` se perdiera pero el rol sobreviviera podía terminar escribiendo un `.env` con
+   una contraseña que el rol nunca tuvo. Corregido: `.env` (si existe) pasa a ser la fuente de
+   verdad de la contraseña, el rol se sincroniza contra ella con `ALTER ROLE`, y el script
+   valida la conectividad real (`psql ... SELECT 1`) antes de continuar o de escribir `.env`.
+   Verificado manualmente contra los tres casos relevantes: rol existente con `.env` perdido
+   (el caso peligroso original), `.env` ya existente (reutiliza sin regenerar) y `.env` con
+   formato inválido (aborta con mensaje claro).
+2. **Límite real de "append-only" en Audit (v0.0.1)**: es una garantía a nivel
+   `AuditEventRepository`/API (sin `update()`/`delete()` expuestos), no todavía a nivel de
+   PostgreSQL — el rol de runtime sigue siendo owner de `audit_events` y conserva privilegios
+   `UPDATE`/`DELETE` de motor. No se implementó revocación de privilegios ni hash-chain ahora
+   (eso es hardening, v0.3 §19 paso 19, y se saldría del alcance de este hito); en cambio se
+   documentó explícitamente el límite en el docstring de `AuditEventRepository` y en
+   `audit/integrity/README.md`, para no dar una falsa sensación de seguridad.
+
+## Limitaciones conocidas (vigentes tras este PR)
+
+- **Audit append-only es de aplicación, no de base de datos.** El rol de PostgreSQL con el
+  que corre TONY podría, técnicamente, alterar o borrar filas de `audit_events` directamente.
+  Mitigación prevista: `audit/integrity/` (revocar privilegios al rol de runtime y/o
+  encadenar checksums), en la fase de hardening.
+
 ## Consecuencias
 
 - El repositorio arranca hoy de verdad en Linux: `tony` como servicio systemd o como comando

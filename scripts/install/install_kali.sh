@@ -7,7 +7,12 @@
 # Uso:
 #   sudo ./scripts/install/install_kali.sh [/ruta/de/instalacion]
 #
-# Por defecto instala en /opt/tony. No sobreescribe un .env existente.
+# Por defecto instala en /opt/tony. Es idempotente en las credenciales de PostgreSQL: si ya
+# existe .env, su DATABASE_URL es la fuente de verdad y el rol de PostgreSQL se sincroniza
+# contra esa contraseña (via ALTER ROLE); si no existe, se genera una contraseña nueva y se
+# fuerza tanto en el rol como en .env. Esto evita que una reinstalacion o una recuperacion
+# parcial (p. ej. .env perdido pero el rol de PostgreSQL sobreviviendo) deje el rol y .env
+# con contraseñas distintas entre si (ver docs/adr/0001-bootstrap-v0.0.1.md).
 
 set -euo pipefail
 
@@ -16,6 +21,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SERVICE_USER="tony"
 DB_NAME="tony"
 DB_USER="tony"
+ENV_FILE="${INSTALL_DIR}/.env"
 
 if [[ $EUID -ne 0 ]]; then
   echo "Este script necesita privilegios de root (usar sudo)." >&2
@@ -48,13 +54,37 @@ python3 -m venv "${INSTALL_DIR}/.venv"
 "${INSTALL_DIR}/.venv/bin/pip" install --upgrade pip
 "${INSTALL_DIR}/.venv/bin/pip" install -e "${INSTALL_DIR}"
 
-echo "==> Configurando rol y base de datos PostgreSQL (idempotente)"
-DB_PASSWORD="$(openssl rand -hex 24)"
+echo "==> Resolviendo credenciales de PostgreSQL (idempotente)"
+if [[ -f "${ENV_FILE}" ]]; then
+  EXISTING_URL="$(grep -E '^DATABASE_URL=' "${ENV_FILE}" | head -n1 | cut -d= -f2-)"
+  if [[ "${EXISTING_URL}" =~ ^postgresql\+psycopg://${DB_USER}:([^@]+)@ ]]; then
+    DB_PASSWORD="${BASH_REMATCH[1]}"
+    WRITE_ENV=false
+    echo "    ${ENV_FILE} ya existe: se reutiliza su contraseña como fuente de verdad."
+  else
+    echo "No se pudo leer una contraseña valida para '${DB_USER}' desde ${ENV_FILE}" \
+      "(DATABASE_URL con formato inesperado: '${EXISTING_URL}')." >&2
+    echo "Revisar el archivo manualmente, o eliminarlo para que el instalador genere" \
+      "credenciales nuevas de forma consistente." >&2
+    exit 1
+  fi
+else
+  DB_PASSWORD="$(openssl rand -hex 24)"
+  WRITE_ENV=true
+  echo "    ${ENV_FILE} no existe: se generan credenciales nuevas."
+fi
+
+echo "==> Sincronizando rol y base de datos PostgreSQL con la contraseña vigente"
+# ALTER ROLE (no solo CREATE ROLE IF NOT EXISTS) es lo que hace esto idempotente de verdad:
+# si el rol ya existia con otra contraseña (p. ej. porque se perdio .env), queda forzado a
+# coincidir con DB_PASSWORD en vez de conservar un valor que ya no conocemos.
 sudo -u postgres psql -v ON_ERROR_STOP=1 <<-EOSQL
     DO \$\$
     BEGIN
       IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${DB_USER}') THEN
         CREATE ROLE ${DB_USER} LOGIN PASSWORD '${DB_PASSWORD}';
+      ELSE
+        ALTER ROLE ${DB_USER} WITH LOGIN PASSWORD '${DB_PASSWORD}';
       END IF;
     END
     \$\$;
@@ -62,16 +92,23 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 <<-EOSQL
     WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${DB_NAME}')\gexec
 EOSQL
 
-if [[ ! -f "${INSTALL_DIR}/.env" ]]; then
-  echo "==> Generando ${INSTALL_DIR}/.env"
-  cat > "${INSTALL_DIR}/.env" <<-EOF
+echo "==> Verificando conectividad con las credenciales resueltas"
+if ! PGPASSWORD="${DB_PASSWORD}" psql -h localhost -U "${DB_USER}" -d "${DB_NAME}" -c "SELECT 1;" >/dev/null; then
+  echo "No se pudo conectar a PostgreSQL como '${DB_USER}' con la contraseña resuelta." >&2
+  echo "Rol y credenciales quedaron desincronizados; abortando antes de escribir ${ENV_FILE}." >&2
+  exit 1
+fi
+
+if [[ "${WRITE_ENV}" == true ]]; then
+  echo "==> Generando ${ENV_FILE}"
+  cat > "${ENV_FILE}" <<-EOF
 	TONY_ENV=production
 	LOG_LEVEL=INFO
 	DATABASE_URL=postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@localhost:5432/${DB_NAME}
 	EOF
-  chmod 600 "${INSTALL_DIR}/.env"
+  chmod 600 "${ENV_FILE}"
 else
-  echo "==> ${INSTALL_DIR}/.env ya existe, no se sobreescribe"
+  echo "==> ${ENV_FILE} sin cambios (credenciales ya consistentes con PostgreSQL)"
 fi
 
 echo "==> Preparando directorio de datos en runtime (var/)"
