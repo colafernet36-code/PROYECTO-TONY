@@ -1,5 +1,7 @@
 # Proyecto TONY
 
+[![CI](https://github.com/colafernet36-code/PROYECTO-TONY/actions/workflows/ci.yml/badge.svg)](https://github.com/colafernet36-code/PROYECTO-TONY/actions/workflows/ci.yml)
+
 Asistente personal inteligente, local-first, modular, seguro y extensible — para conversar,
 recordar, investigar, colaborar, automatizar y controlar sistemas autorizados bajo supervisión
 humana.
@@ -78,6 +80,9 @@ pytest tests/unit tests/integration
 
 Los tests de integración requieren `DATABASE_URL` (o `TEST_DATABASE_URL`) apuntando a un
 PostgreSQL real; se saltan automáticamente si no hay uno disponible.
+
+GitHub Actions corre esta misma batería (con un PostgreSQL de servicio) en cada push a `main`
+y en cada pull request — ver `.github/workflows/ci.yml`.
 
 ## Principios no negociables (v0.1 §2)
 
