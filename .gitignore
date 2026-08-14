@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+!config/environments/*.env.example
+*.pem
+*.key
+
+# Node / TypeScript (ui/, mobile/ cuando se implementen)
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Rust (privileged-agent/ cuando se implemente)
+target/
+Cargo.lock
+
+# Database / runtime data
+*.sqlite3
+var/
+pgdata/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
